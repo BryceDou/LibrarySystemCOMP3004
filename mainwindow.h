@@ -3,6 +3,8 @@
 
 #include <QMainWindow>
 #include <memory>   // std::unique_ptr
+#include "catalogue.h"
+#include "patron.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -24,11 +26,11 @@ private slots:
     void on_actionAbout_triggered();   // QAction::triggered() auto-connect
 
     void on_tableItems_itemSelectionChanged();   // when selection changes
-      void on_borrowBtn_clicked();
-      void on_returnBtn_clicked();
-      void on_placeHoldBtn_clicked();   // optional, can be stub for now
-      void on_cancelHoldBtn_clicked();  // optional, can be stub for now
-
+    void on_borrowBtn_clicked();
+    void on_returnBtn_clicked();
+    void on_placeHoldBtn_clicked();   // optional, can be stub for now
+    void on_cancelHoldBtn_clicked();  // optional, can be stub for now
+    void on_viewAccountBtn_clicked();
 
 private:
     Ui::MainWindow *ui;
@@ -41,8 +43,12 @@ private:
     void on_actiontrrigered();
 
     int currentSelectedId() const;                 // -1 if nothing selected
+
     void updateButtons();                          // enable/disable buttons
+
     void refreshTableKeepingSelection(int keepId); // repaint and reselect
+
+    patron* activePatron_{nullptr};
 };
 
 #endif // MAINWINDOW_H

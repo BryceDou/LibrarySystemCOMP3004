@@ -25,6 +25,9 @@ public:
     QString rating;                 // for movie/game
 
     QList<int> holdQueue;           // FIFO of patron IDs
+    // add to your item class
+    int borrowerId = -1;   // -1 = not checked out
+
 };
 
 #endif // ITEM_H

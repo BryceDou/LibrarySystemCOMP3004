@@ -180,26 +180,46 @@ void MainWindow::on_tableItems_itemSelectionChanged() {
 }
 
 // Borrow: set status to checked_out and assign a due date (+14 days).
+//void MainWindow::on_borrowBtn_clicked() {
+//    int id = currentSelectedId();
+//    if (id < 0) return;
+
+//    // Find the item and modify it.
+//    for (auto &it : data_->items) {
+//        if (it.id == id) {
+//            if (it.status == availability::checked_out) {
+//                QMessageBox::warning(this, "Borrow", "Item already checked out.");
+//                return;
+//            }
+//            it.status = availability::checked_out;
+//            it.due = QDate::currentDate().addDays(14);
+//            statusBar()->showMessage(QString("Borrowed item %1 (due %2)")
+//                                     .arg(id).arg(it.due.toString("yyyy-MM-dd")), 3000);
+//            refreshTableKeepingSelection(id);
+//            return;
+//        }
+//    }
+//}
+
 void MainWindow::on_borrowBtn_clicked() {
-    int id = currentSelectedId();
+    if (!activePatron_) return;
+    const int id = currentSelectedId();
     if (id < 0) return;
 
-    // Find the item and modify it.
-    for (auto &it : data_->items) {
-        if (it.id == id) {
-            if (it.status == availability::checked_out) {
-                QMessageBox::warning(this, "Borrow", "Item already checked out.");
-                return;
-            }
-            it.status = availability::checked_out;
-            it.due = QDate::currentDate().addDays(14);
-            statusBar()->showMessage(QString("Borrowed item %1 (due %2)")
-                                     .arg(id).arg(it.due.toString("yyyy-MM-dd")), 3000);
-            refreshTableKeepingSelection(id);
-            return;
-        }
-    }
+    item* it = data_->find_item(id);
+    if (!it) return;
+    if (it->status != availability::available) return;
+    if (!activePatron_->canBorrow(/*maxLoans=*/3)) return;
+
+    it->status = availability::checked_out;
+    it->due = QDate::currentDate().addDays(14);
+    it->borrowerId = activePatron_->id;
+
+    activePatron_->addLoan(it->id);
+
+    refreshTableKeepingSelection(id);
 }
+
 
 // Return: set status to available and clear due date.
 void MainWindow::on_returnBtn_clicked() {
