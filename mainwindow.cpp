@@ -1,277 +1,411 @@
 #include "mainwindow.h"
-#include "ui_mainwindow.h"
-#include "catalogue.h"
-#include <QTableWidgetItem>
+#include <QApplication>
 #include <QHeaderView>
 #include <QMessageBox>
 #include <QDate>
-#include <QTableWidgetItem>
-#include <memory>  // make sure this is included here
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QSplitter>
+#include <QToolBar>
 
-MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent),
-      ui(new Ui::MainWindow)
+MainWindow::MainWindow(QWidget* parent)
+    : QMainWindow(parent)
 {
-    ui->setupUi(this);
-    updateButtons();
-
-    // Create and seed the in-memory dataset
-    data_.reset(new catalogue());   // works even without make_unique
-    updateButtons();
-    data_->seed_default_data();
-    updateButtons();
-
-    ui->tableItems->setColumnCount(6);
-    ui->tableItems->setHorizontalHeaderLabels({"ID","Title","Creator","Type","Status","Due"});
-    ui->tableItems->horizontalHeader()->setStretchLastSection(true);
-
-    // finally fill the table
-    populateItemsTable();
+    cat_.seedDefaultData();
+    buildUi();
+    loginFlow();
 }
 
-void MainWindow::populateItemsTable() {
-    const auto &items = data_->items;
-    ui->tableItems->setRowCount(items.size());
-    for (int r = 0; r < items.size(); ++r) {
-        const item &it = items[r];
-        ui->tableItems->setItem(r, 0, new QTableWidgetItem(QString::number(it.id)));
-        ui->tableItems->setItem(r, 1, new QTableWidgetItem(it.title));
-        ui->tableItems->setItem(r, 2, new QTableWidgetItem(it.creator));
-        ui->tableItems->setItem(r, 3, new QTableWidgetItem(
-            it.type == item_type::fiction    ? "Fiction" :
-            it.type == item_type::nonfiction ? "Non-Fiction" :
-            it.type == item_type::magazine   ? "Magazine" :
-            it.type == item_type::movie      ? "Movie" : "Video Game"));
-        ui->tableItems->setItem(r, 4, new QTableWidgetItem(
-            it.status == availability::available ? "Available" : "Checked out"));
-        ui->tableItems->setItem(r, 5, new QTableWidgetItem(
-            it.due.isValid() ? it.due.toString("yyyy-MM-dd") : ""));
-    }
-    ui->tableItems->resizeColumnsToContents();
+void MainWindow::buildUi() {
+    setWindowTitle("HinLIBS");
+    auto* tool = addToolBar("Main");
+    auto* actLogout = tool->addAction("Logout");
+    connect(actLogout, &QAction::triggered, this, &MainWindow::onLogout);
+
+    auto* central = new QWidget(this);
+    auto* root = new QVBoxLayout(central);
+
+    banner_ = new QLabel(this);
+    banner_->setObjectName("banner");
+    banner_->setStyleSheet("#banner{font-weight:600;font-size:16px;padding:8px 4px;}");
+
+    // Items table
+    itemsTbl_ = new QTableWidget(this);
+    itemsTbl_->setColumnCount(8);
+    itemsTbl_->setHorizontalHeaderLabels({"ID","Title","Creator","Type","Status","Due","Extra 1","Extra 2"});
+    itemsTbl_->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    itemsTbl_->setSelectionBehavior(QAbstractItemView::SelectRows);
+    itemsTbl_->setSelectionMode(QAbstractItemView::SingleSelection);
+    connect(itemsTbl_->selectionModel(), &QItemSelectionModel::selectionChanged, this, &MainWindow::onSelectionChanged);
+
+    // Actions
+    auto* actions = new QHBoxLayout();
+    btnBorrow_ = new QPushButton("Borrow");
+    btnReturn_ = new QPushButton("Return");
+    btnHold_   = new QPushButton("Place Hold");
+    btnCancelHold_ = new QPushButton("Cancel Hold");
+    actions->addWidget(btnBorrow_);
+    actions->addWidget(btnReturn_);
+    actions->addWidget(btnHold_);
+    actions->addWidget(btnCancelHold_);
+    actions->addStretch();
+
+    connect(btnBorrow_, &QPushButton::clicked, this, &MainWindow::borrowItem);
+    connect(btnReturn_, &QPushButton::clicked, this, &MainWindow::returnItem);
+    connect(btnHold_,   &QPushButton::clicked, this, &MainWindow::placeHold);
+    connect(btnCancelHold_, &QPushButton::clicked, this, &MainWindow::cancelHold);
+
+    // Details panel
+    auto* detBox = new QGroupBox("Selected Item", this);
+    auto* detLay = new QVBoxLayout(detBox);
+    detTitle_   = new QLabel("-");
+    detCreator_ = new QLabel("-");
+    detType_    = new QLabel("-");
+    detStatus_  = new QLabel("-");
+    detDue_     = new QLabel("-");
+    detExtra1_  = new QLabel("-");
+    detExtra2_  = new QLabel("-");
+    for (auto* l : {detTitle_, detCreator_, detType_, detStatus_, detDue_, detExtra1_, detExtra2_}) l->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    detLay->addWidget(detTitle_);
+    detLay->addWidget(detCreator_);
+    detLay->addWidget(detType_);
+    detLay->addWidget(detStatus_);
+    detLay->addWidget(detDue_);
+    detLay->addWidget(detExtra1_);
+    detLay->addWidget(detExtra2_);
+
+    // Account status
+    auto* acctBox = new QGroupBox("Account Status", this);
+    auto* acctLay = new QHBoxLayout(acctBox);
+
+    loansTbl_ = new QTableWidget(this);
+    loansTbl_->setColumnCount(3);
+    loansTbl_->setHorizontalHeaderLabels({"Title","Due","Days Left"});
+    loansTbl_->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    loansTbl_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+
+    holdsTbl_ = new QTableWidget(this);
+    holdsTbl_->setColumnCount(2);
+    holdsTbl_->setHorizontalHeaderLabels({"Title","Queue Pos"});
+    holdsTbl_->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    holdsTbl_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+
+    acctLay->addWidget(loansTbl_, 1);
+    acctLay->addWidget(holdsTbl_, 1);
+
+    root->addWidget(banner_);
+    root->addWidget(itemsTbl_, 3);
+    root->addLayout(actions);
+    root->addWidget(detBox);
+    root->addWidget(acctBox, 2);
+    setCentralWidget(central);
 }
 
-void MainWindow::applyFilters() {
-    // Read filters
-    const QString q = ui->searchEdit->text().trimmed().toLower();
-    const int typeIdx = ui->typeFilter->currentIndex();   // 0=All
-    const int statIdx = ui->statusFilter->currentIndex(); // 0=All
-
-    // Rebuild filtered list
-    QVector<item> filtered;
-    filtered.reserve(data_->items.size());
-    for (const auto &it : data_->items) {
-        // text match
-        bool textOk = q.isEmpty()
-            || it.title.toLower().contains(q)
-            || it.creator.toLower().contains(q);
-
-        // type match
-        bool typeOk = true;
-        if (typeIdx > 0) {
-            item_type want =
-                (typeIdx==1)? item_type::fiction :
-                (typeIdx==2)? item_type::nonfiction :
-                (typeIdx==3)? item_type::magazine :
-                (typeIdx==4)? item_type::movie :
-                              item_type::videogame;
-            typeOk = (it.type == want);
-        }
-
-        // status match
-        bool statOk = true;
-        if (statIdx > 0) {
-            availability want = (statIdx==1)? availability::available
-                                            : availability::checked_out;
-            statOk = (it.status == want);
-        }
-
-        if (textOk && typeOk && statOk) filtered.push_back(it);
-    }
-
-    // Paint table
-    ui->tableItems->setRowCount(filtered.size());
-    for (int r=0; r<filtered.size(); ++r) {
-        const item &it = filtered[r];
-        ui->tableItems->setItem(r, 0, new QTableWidgetItem(QString::number(it.id)));
-        ui->tableItems->setItem(r, 1, new QTableWidgetItem(it.title));
-        ui->tableItems->setItem(r, 2, new QTableWidgetItem(it.creator));
-        QString typeStr =
-            (it.type==item_type::fiction)    ? "Fiction" :
-            (it.type==item_type::nonfiction) ? "Non-Fiction" :
-            (it.type==item_type::magazine)   ? "Magazine" :
-            (it.type==item_type::movie)      ? "Movie" : "Video Game";
-        ui->tableItems->setItem(r, 3, new QTableWidgetItem(typeStr));
-        ui->tableItems->setItem(r, 4, new QTableWidgetItem(
-            (it.status==availability::available) ? "Available" : "Checked out"));
-        ui->tableItems->setItem(r, 5, new QTableWidgetItem(
-            it.due.isValid()? it.due.toString("yyyy-MM-dd") : ""));
-    }
-    ui->tableItems->resizeColumnsToContents();
-    updateButtons();
-}
-
-int MainWindow::currentSelectedId() const {
-    int row = ui->tableItems->currentRow();
-    if (row < 0) return -1;
-    bool ok = false;
-    int id = ui->tableItems->item(row, 0)->text().toInt(&ok);
-    return ok ? id : -1;
-}
-
-// Enable/disable buttons depending on selection and status.
-void MainWindow::updateButtons() {
-    int id = currentSelectedId();
-    bool hasSel = (id >= 0);
-
-    // default states
-    bool canBorrow = false;
-    bool canReturn = false;
-    bool canPlaceHold = false;
-    bool canCancelHold = false; // we will keep it false for now
-
-    if (hasSel) {
-        // Find the item in memory (simple linear search).
-        const auto &items = data_->items;
-        for (const auto &it : items) {
-            if (it.id == id) {
-                canBorrow = (it.status == availability::available);
-                canReturn = (it.status == availability::checked_out);
-                // If you later implement a real hold queue, set these properly:
-                canPlaceHold = (it.status == availability::checked_out);
-                break;
-            }
-        }
-    }
-
-    ui->borrowBtn->setEnabled(canBorrow);
-    ui->returnBtn->setEnabled(canReturn);
-    ui->placeHoldBtn->setEnabled(canPlaceHold);
-    ui->cancelHoldBtn->setEnabled(canCancelHold);
-
-    // Update label with selected info
-    if (hasSel) {
-        ui->selectedInfo->setText(QString("Selected ID: %1").arg(id));
-    } else {
-        ui->selectedInfo->setText("");
-    }
-}
-
-// Refill table (by applying current filters) and reselect item if still visible.
-void MainWindow::refreshTableKeepingSelection(int keepId) {
-    applyFilters(); // this repaints the table according to current filters
-
-    if (keepId < 0) { updateButtons(); return; }
-
-    // Try to reselect the same id if it is still visible under current filters.
-    for (int r = 0; r < ui->tableItems->rowCount(); ++r) {
-        bool ok = false;
-        int id = ui->tableItems->item(r, 0)->text().toInt(&ok);
-        if (ok && id == keepId) {
-            ui->tableItems->setCurrentCell(r, 0);
-            break;
-        }
-    }
-    updateButtons();
-}
-
-// When table selection changes, update buttons immediately.
-void MainWindow::on_tableItems_itemSelectionChanged() {
-    updateButtons();
-}
-
-// Borrow: set status to checked_out and assign a due date (+14 days).
-//void MainWindow::on_borrowBtn_clicked() {
-//    int id = currentSelectedId();
-//    if (id < 0) return;
-
-//    // Find the item and modify it.
-//    for (auto &it : data_->items) {
-//        if (it.id == id) {
-//            if (it.status == availability::checked_out) {
-//                QMessageBox::warning(this, "Borrow", "Item already checked out.");
-//                return;
-//            }
-//            it.status = availability::checked_out;
-//            it.due = QDate::currentDate().addDays(14);
-//            statusBar()->showMessage(QString("Borrowed item %1 (due %2)")
-//                                     .arg(id).arg(it.due.toString("yyyy-MM-dd")), 3000);
-//            refreshTableKeepingSelection(id);
-//            return;
-//        }
-//    }
-//}
-
-void MainWindow::on_borrowBtn_clicked() {
-    if (!activePatron_) return;
-    const int id = currentSelectedId();
-    if (id < 0) return;
-
-    item* it = data_->find_item(id);
-    if (!it) return;
-    if (it->status != availability::available) return;
-    if (!activePatron_->canBorrow(/*maxLoans=*/3)) return;
-
-    it->status = availability::checked_out;
-    it->due = QDate::currentDate().addDays(14);
-    it->borrowerId = activePatron_->id;
-
-    activePatron_->addLoan(it->id);
-
-    refreshTableKeepingSelection(id);
-}
-
-
-// Return: set status to available and clear due date.
-void MainWindow::on_returnBtn_clicked() {
-    int id = currentSelectedId();
-    if (id < 0) return;
-
-    for (auto &it : data_->items) {
-        if (it.id == id) {
-            if (it.status == availability::available) {
-                QMessageBox::information(this, "Return", "Item is already available.");
-                return;
-            }
-            it.status = availability::available;
-            it.due = QDate(); // invalid date = clear
-            statusBar()->showMessage(QString("Returned item %1").arg(id), 3000);
-            refreshTableKeepingSelection(id);
+void MainWindow::loginFlow() {
+    while (true) {
+        LoginDialog dlg(&cat_, this);
+        if (dlg.exec() != QDialog::Accepted) {
+            qApp->quit();
             return;
         }
+        setActiveUser(dlg.selectedUserId());
+        if (active_) break;
+    }
+    refreshAll();
+}
+
+void MainWindow::setActiveUser(int uid) {
+    active_ = cat_.findUserById(uid);
+    if (!active_) return;
+    banner_->setText(QString("Logged in as: <b>%1</b> — <i>%2</i>")
+                     .arg(active_->name, toString(active_->type)));
+    // Role-based UI
+    const bool patron = active_->type == UserType::Patron;
+    btnBorrow_->setEnabled(patron);
+    btnReturn_->setEnabled(patron);
+    btnHold_->setEnabled(patron);
+    btnCancelHold_->setEnabled(patron);
+}
+
+void MainWindow::refreshAll() {
+    refreshItemsTable();
+    refreshDetails();
+    refreshAccountPanels();
+    updateButtons();
+}
+
+static int selectedItemId(const QTableWidget* tbl) {
+    auto sel = tbl->selectionModel()->selectedRows();
+    if (sel.isEmpty()) return -1;
+    return tbl->item(sel.first().row(), 0)->text().toInt();
+}
+
+QString MainWindow::extra1Header(ItemType t) {
+    switch (t) {
+        case ItemType::NonFiction: return "Dewey";
+        case ItemType::Magazine:   return "Issue";
+        case ItemType::Movie:      return "Genre";
+        case ItemType::VideoGame:  return "Genre";
+        default: return "Extra 1";
+    }
+}
+QString MainWindow::extra2Header(ItemType t) {
+    switch (t) {
+        case ItemType::Magazine:   return "Published";
+        case ItemType::Movie:      return "Rating";
+        case ItemType::VideoGame:  return "Rating";
+        default: return "Extra 2";
+    }
+}
+QString MainWindow::extra1Value(const Item& it) {
+    switch (it.type) {
+        case ItemType::NonFiction: return it.dewey;
+        case ItemType::Magazine:   return it.issue;
+        case ItemType::Movie:
+        case ItemType::VideoGame:  return it.genre;
+        default: return "";
+    }
+}
+QString MainWindow::extra2Value(const Item& it) {
+    switch (it.type) {
+        case ItemType::Magazine:   return it.pub.isValid() ? it.pub.toString("yyyy-MM-dd") : "";
+        case ItemType::Movie:
+        case ItemType::VideoGame:  return it.rating;
+        default: return "";
     }
 }
 
-// Place Hold / Cancel Hold (stubs for now). You can extend with a hold queue later.
-void MainWindow::on_placeHoldBtn_clicked() {
-    int id = currentSelectedId();
-    if (id < 0) return;
-    QMessageBox::information(this, "Hold", QString("Placed hold for item %1 (stub).").arg(id));
+void MainWindow::refreshItemsTable() {
+    itemsTbl_->setRowCount(0);
+    itemsTbl_->clearContents();
+    itemsTbl_->setSortingEnabled(false);
+
+    itemsTbl_->setHorizontalHeaderLabels({"ID","Title","Creator","Type","Status","Due","Extra 1","Extra 2"});
+
+    int row=0;
+    for (const auto& it : cat_.items) {
+        itemsTbl_->insertRow(row);
+        auto put = [&](int col, const QString& s){
+            auto* item = new QTableWidgetItem(s);
+            if (col==0) item->setData(Qt::UserRole, it.id);
+            item->setFlags(item->flags() ^ Qt::ItemIsEditable);
+            itemsTbl_->setItem(row, col, item);
+        };
+        put(0, QString::number(it.id));
+        put(1, it.title);
+        put(2, it.creator);
+        put(3, toString(it.type));
+        put(4, toString(it.status));
+        put(5, it.due.isValid()? it.due.toString("yyyy-MM-dd") : "");
+        put(6, extra1Value(it));
+        put(7, extra2Value(it));
+        row++;
+    }
+    itemsTbl_->setSortingEnabled(true);
+}
+
+void MainWindow::refreshDetails() {
+    int id = selectedItemId(itemsTbl_);
+    const Item* it = (id>=0) ? cat_.findItem(id) : nullptr;
+    if (!it) {
+        detTitle_->setText("Title: -");
+        detCreator_->setText("Creator: -");
+        detType_->setText("Type: -");
+        detStatus_->setText("Status: -");
+        detDue_->setText("Due: -");
+        detExtra1_->setText("Extra 1: -");
+        detExtra2_->setText("Extra 2: -");
+        return;
+    }
+    detTitle_->setText("Title: " + it->title);
+    detCreator_->setText("Creator: " + it->creator);
+    detType_->setText("Type: " + toString(it->type));
+    detStatus_->setText("Status: " + toString(it->status));
+    detDue_->setText("Due: " + (it->due.isValid()? it->due.toString("yyyy-MM-dd") : "-"));
+    detExtra1_->setText(extra1Header(it->type) + ": " + extra1Value(*it));
+    detExtra2_->setText(extra2Header(it->type) + ": " + extra2Value(*it));
+}
+
+void MainWindow::refreshAccountPanels() {
+    loansTbl_->setRowCount(0);
+    holdsTbl_->setRowCount(0);
+    if (!active_) return;
+
+    // Loans
+    int r=0;
+    for (int itemId : active_->loans) {
+        const Item* it = cat_.findItem(itemId);
+        if (!it) continue;
+        loansTbl_->insertRow(r);
+        auto put=[&](int c, const QString&s){
+            auto* cell=new QTableWidgetItem(s);
+            cell->setFlags(cell->flags() ^ Qt::ItemIsEditable);
+            loansTbl_->setItem(r,c,cell);
+        };
+        put(0, it->title);
+        put(1, it->due.isValid()? it->due.toString("yyyy-MM-dd") : "");
+        int daysLeft = QDate::currentDate().daysTo(it->due);
+        put(2, QString::number(daysLeft));
+        r++;
+    }
+
+    // Holds
+    r=0;
+    for (int itemId : active_->holds) {
+        const Item* it = cat_.findItem(itemId);
+        if (!it) continue;
+        int pos = it->holdQueue.indexOf(active_->id);
+        holdsTbl_->insertRow(r);
+        auto put=[&](int c, const QString&s){
+            auto* cell=new QTableWidgetItem(s);
+            cell->setFlags(cell->flags() ^ Qt::ItemIsEditable);
+            holdsTbl_->setItem(r,c,cell);
+        };
+        put(0, it->title);
+        put(1, (pos>=0? QString::number(pos+1) : "-"));
+        r++;
+    }
+}
+
+void MainWindow::updateButtons() {
+    const bool patron = active_ && active_->type == UserType::Patron;
+    int id = selectedItemId(itemsTbl_);
+    const Item* it = (id>=0) ? cat_.findItem(id) : nullptr;
+
+    bool canBorrow=false, canReturn=false, canHold=false, canCancelHold=false;
+
+    if (patron && it) {
+        const bool hasLoanCap = active_->loans.size() < 3;
+        const bool isAvailable = it->status == Availability::Available;
+        const bool isCheckedOut = it->status == Availability::CheckedOut;
+        const bool isBorrower = it->borrowerId == active_->id;
+        const bool inHoldQ = it->holdQueue.contains(active_->id);
+
+        // Borrow: available AND loan cap AND (no holds OR you're first in line)
+        bool queueClear = it->holdQueue.isEmpty() || (it->holdQueue.first() == active_->id);
+        canBorrow = isAvailable && hasLoanCap && queueClear;
+
+        // Return: only if you borrowed it
+        canReturn = isCheckedOut && isBorrower;
+
+        // Place hold: only if checked out and not already in queue
+        canHold = isCheckedOut && !inHoldQ;
+
+        // Cancel hold: only if you are in queue
+        canCancelHold = inHoldQ;
+    }
+
+    btnBorrow_->setEnabled(canBorrow);
+    btnReturn_->setEnabled(canReturn);
+    btnHold_->setEnabled(canHold);
+    btnCancelHold_->setEnabled(canCancelHold);
+}
+
+void MainWindow::borrowItem() {
+    if (!active_ || active_->type != UserType::Patron) return;
+    int id = selectedItemId(itemsTbl_);
+    Item* it = cat_.findItem(id);
+    if (!it) return;
+
+    if (active_->loans.size() >= 3) {
+        QMessageBox::warning(this,"Limit","Maximum active loans is 3.");
+        return;
+    }
+    if (it->status != Availability::Available) {
+        QMessageBox::warning(this,"Unavailable","Item is not available.");
+        return;
+    }
+    if (!it->holdQueue.isEmpty() && it->holdQueue.first() != active_->id) {
+        QMessageBox::information(this,"On Hold","Another patron is first in the hold queue.");
+        return;
+    }
+
+    it->status = Availability::CheckedOut;
+    it->borrowerId = active_->id;
+    it->due = QDate::currentDate().addDays(14);
+    active_->addLoan(it->id);
+
+    // If user was first in queue, remove that hold
+    if (!it->holdQueue.isEmpty() && it->holdQueue.first() == active_->id) {
+        it->holdQueue.pop_front();
+        active_->removeHold(it->id);
+    }
+
+    refreshAll();
+}
+
+void MainWindow::returnItem() {
+    if (!active_ || active_->type != UserType::Patron) return;
+    int id = selectedItemId(itemsTbl_);
+    Item* it = cat_.findItem(id);
+    if (!it) return;
+
+    if (it->borrowerId != active_->id) {
+        QMessageBox::warning(this, "Not your loan", "You can only return items you borrowed.");
+        return;
+    }
+
+    it->status = Availability::Available;
+    it->borrowerId = -1;
+    it->due = QDate();
+    active_->removeLoan(it->id);
+
+    refreshAll();
+}
+
+void MainWindow::placeHold() {
+    if (!active_ || active_->type != UserType::Patron) return;
+    int id = selectedItemId(itemsTbl_);
+    Item* it = cat_.findItem(id);
+    if (!it) return;
+
+    if (it->status != Availability::CheckedOut) {
+        QMessageBox::information(this, "Hold not allowed", "Holds are only allowed on checked-out items.");
+        return;
+    }
+    if (it->holdQueue.contains(active_->id)) {
+        QMessageBox::information(this, "Already queued", "You are already in the hold queue.");
+        return;
+    }
+
+    it->holdQueue.append(active_->id);
+    active_->addHold(it->id);
+    int pos = it->holdQueue.size(); // appended at end
+    QMessageBox::information(this, "Hold placed", QString("You are #%1 in the queue.").arg(pos));
+
+    refreshAll();
+}
+
+void MainWindow::cancelHold() {
+    if (!active_ || active_->type != UserType::Patron) return;
+    int id = selectedItemId(itemsTbl_);
+    Item* it = cat_.findItem(id);
+    if (!it) return;
+
+    int idx = it->holdQueue.indexOf(active_->id);
+    if (idx < 0) {
+        QMessageBox::information(this, "No hold", "You do not have a hold on this item.");
+        return;
+    }
+
+    it->holdQueue.removeAt(idx);
+    active_->removeHold(it->id);
+    refreshAll();
+}
+
+void MainWindow::onSelectionChanged() {
+    refreshDetails();
     updateButtons();
 }
 
-void MainWindow::on_cancelHoldBtn_clicked() {
-    int id = currentSelectedId();
-    if (id < 0) return;
-    QMessageBox::information(this, "Hold", QString("Canceled hold for item %1 (stub).").arg(id));
+void MainWindow::onLogout() {
+    // Clear session-specific UI state
+    active_ = nullptr;
+    banner_->setText("Not signed in");
+    loansTbl_->setRowCount(0);
+    holdsTbl_->setRowCount(0);
     updateButtons();
+    // Show login
+    loginFlow();
 }
 
-void MainWindow::on_searchEdit_textChanged(const QString&) { applyFilters(); }
-void MainWindow::on_typeFilter_currentIndexChanged(int)     { applyFilters(); }
-void MainWindow::on_statusFilter_currentIndexChanged(int)   { applyFilters(); }
-void MainWindow::on_clearFilterBtn_clicked() {
-    ui->searchEdit->clear();
-    ui->typeFilter->setCurrentIndex(0);
-    ui->statusFilter->setCurrentIndex(0);
-    applyFilters();
-}
-
-void MainWindow::on_actionAbout_triggered() {
-    QMessageBox::about(this, "About",
-        "Library Demo\nCOMP3004 Group Project");
-}
-
-MainWindow::~MainWindow()
-{
-    delete ui; // unique_ptr auto-destroys data_
-}

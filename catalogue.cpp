@@ -1,79 +1,91 @@
 #include "catalogue.h"
 #include <QDate>
 
-item* catalogue::find_item(int id) {
-    for (auto &it : items)
-        if (it.id == id) return &it;
+static QString ci(const QString& s) { return s.trimmed().toLower(); }
+
+Item* Catalogue::findItem(int id) {
+    for (auto &it : items) if (it.id == id) return &it;
+    return nullptr;
+}
+const Item* Catalogue::findItem(int id) const {
+    for (auto const &it : items) if (it.id == id) return &it;
+    return nullptr;
+}
+User* Catalogue::findUserById(int id) {
+    for (auto &u : users) if (u.id == id) return &u;
+    return nullptr;
+}
+const User* Catalogue::findUserById(int id) const {
+    for (auto const &u : users) if (u.id == id) return &u;
+    return nullptr;
+}
+User* Catalogue::findUserByName(const QString& name) {
+    const QString needle = ci(name);
+    for (auto &u : users) if (ci(u.name) == needle) return &u;
     return nullptr;
 }
 
-patron* catalogue::find_patron_by_name(const QString& name) {
-    for (auto &p : patrons)
-        if (p.name == name) return &p;
-    return nullptr;
-}
+void Catalogue::seedDefaultData() {
+    items.clear(); users.clear();
 
-void catalogue::seed_default_data() {
-    items.clear();
-    patrons.clear();
+    int id = 100;
 
-    // Helper lambdas to keep the seeding code concise
-    auto add_patron = [this](int id, const QString& name) {
-        patron p; p.id = id; p.name = name; patrons.append(p);
+    auto mkFic = [&](const QString& t, const QString& a){
+        Item it; it.id=id++; it.type=ItemType::Fiction; it.title=t; it.creator=a; items.push_back(it);
     };
-    auto add_fiction = [this](int id, const QString& title, const QString& author) {
-        item it; it.id = id; it.type = item_type::fiction; it.title = title; it.creator = author; items.append(it);
+    auto mkNF  = [&](const QString& t, const QString& a, const QString& ddc){
+        Item it; it.id=id++; it.type=ItemType::NonFiction; it.title=t; it.creator=a; it.dewey=ddc; items.push_back(it);
     };
-    auto add_nonfiction = [this](int id, const QString& title, const QString& author, const QString& dewey) {
-        item it; it.id = id; it.type = item_type::nonfiction; it.title = title; it.creator = author; it.dewey = dewey; items.append(it);
+    auto mkMag = [&](const QString& t, const QString& pubr, const QString& issue, const QDate& pubd){
+        Item it; it.id=id++; it.type=ItemType::Magazine; it.title=t; it.creator=pubr; it.issue=issue; it.pub=pubd; items.push_back(it);
     };
-    auto add_magazine = [this](int id, const QString& title, const QString& issue, const QDate& pub) {
-        item it; it.id = id; it.type = item_type::magazine; it.title = title; it.creator = "Editorial";
-        it.issue = issue; it.pub = pub; items.append(it);
+    auto mkMov = [&](const QString& t, const QString& dir, const QString& genre, const QString& rating){
+        Item it; it.id=id++; it.type=ItemType::Movie; it.title=t; it.creator=dir; it.genre=genre; it.rating=rating; items.push_back(it);
     };
-    auto add_movie = [this](int id, const QString& title, const QString& director, const QString& genre, const QString& rating) {
-        item it; it.id = id; it.type = item_type::movie; it.title = title; it.creator = director; it.genre = genre; it.rating = rating; items.append(it);
-    };
-    auto add_game = [this](int id, const QString& title, const QString& studio, const QString& genre, const QString& rating) {
-        item it; it.id = id; it.type = item_type::videogame; it.title = title; it.creator = studio; it.genre = genre; it.rating = rating; items.append(it);
+    auto mkGame = [&](const QString& t, const QString& studio, const QString& genre, const QString& rating){
+        Item it; it.id=id++; it.type=ItemType::VideoGame; it.title=t; it.creator=studio; it.genre=genre; it.rating=rating; items.push_back(it);
     };
 
-    // Users: 5 patrons + librarian + admin (use names to route UI roles)
-    add_patron(1, "Alice");
-    add_patron(2, "Bob");
-    add_patron(3, "Carol");
-    add_patron(4, "Dave");
-    add_patron(5, "Eve");
-    add_patron(100, "Librarian");
-    add_patron(101, "Admin");
+    // 5 Fiction
+    mkFic("The Silent Forest", "A. Greenwood");
+    mkFic("Echoes of Dawn", "M. Rivera");
+    mkFic("Paper Moons", "L. Chen");
+    mkFic("Winter's Edge", "K. Patel");
+    mkFic("Embers in Rain", "J. Alvarez");
 
-    // Items: 5 fiction
-    add_fiction(101, "The River",       "J. Hill");
-    add_fiction(102, "Night Wind",      "S. Li");
-    add_fiction(103, "Autumn Letters",  "M. Patel");
-    add_fiction(104, "Glass Garden",    "R. Gomez");
-    add_fiction(105, "Silent Harbor",   "K. Wu");
+    // 5 Non-Fiction (with Dewey)
+    mkNF("A Brief History of Numbers", "R. Kumar", "510.9");
+    mkNF("Ocean Currents Explained", "T. Suzuki", "551.46");
+    mkNF("Mindset and Learning", "C. Dweck", "153.8");
+    mkNF("Photography Essentials", "H. Nguyen", "770");
+    mkNF("Modern Architecture", "E. Rossi", "720");
 
-    // 5 nonfiction (with Dewey)
-    add_nonfiction(201, "Deep Space",         "A. Chen",   "520.10");
-    add_nonfiction(202, "Human Body Basics",  "N. Singh",  "612.00");
-    add_nonfiction(203, "Modern Economics",   "T. Adams",  "330.01");
-    add_nonfiction(204, "Wildlife of Sahara", "B. Moore",  "599.74");
-    add_nonfiction(205, "Intro to AI",        "L. Turner", "006.30");
+    // 3 Magazines (issue + publication date)
+    mkMag("TechToday", "TechToday Media", "Vol. 32, No. 7", QDate(2025, 6, 1));
+    mkMag("Science Monthly", "SciPub", "Issue 418",        QDate(2025, 5, 15));
+    mkMag("Art & Design", "ArtDesk", "Spring 2025",        QDate(2025, 3, 20));
 
-    // 3 magazines (issue + publication date)
-    add_magazine(301, "Tech Monthly",  "Vol. 58 No. 3", QDate(2025,3,1));
-    add_magazine(302, "Health Weekly", "Issue 742",     QDate(2025,2,15));
-    add_magazine(303, "City Review",   "Mar 2025",      QDate(2025,3,5));
+    // 3 Movies (genre + rating)
+    mkMov("Chasing Horizons", "N. Park", "Adventure", "PG-13");
+    mkMov("Quiet Rooms",      "S. Okafor", "Thriller",  "R");
+    mkMov("Midnight Sketches","R. Haddad","Drama",     "PG");
 
-    // 3 movies (genre + rating)
-    add_movie(401, "Stars Awake",   "Director Q", "Sci-Fi",   "PG-13");
-    add_movie(402, "Broken Ties",   "I. Novak",   "Drama",    "R");
-    add_movie(403, "Hidden Trails", "C. Rivera",  "Thriller", "PG-13");
+    // 4 Video Games (genre + rating)
+    mkGame("Solar Drift",     "Orion Studios", "Racing",      "E");
+    mkGame("Verdant Realms",  "Hearthware",    "RPG",         "T");
+    mkGame("Circuit Siege",   "BitForge",      "Strategy",    "E10+");
+    mkGame("Neon Courier",    "Delta North",   "Action",      "T");
 
-    // 4 video games (genre + rating)
-    add_game(501, "Sky Quest",      "Studio X",  "RPG",          "E10+");
-    add_game(502, "Circuit Racer",  "Pulsar",    "Racing",       "E");
-    add_game(503, "Dungeon Echoes", "TriForge",  "Action RPG",   "T");
-    add_game(504, "Harbor Builder", "BrickSoft", "Simulation",   "E");
+    // 7 Users: 5 patrons, 1 librarian, 1 admin
+    auto addUser = [&](int id_, const QString& name, UserType t){
+        User u; u.id=id_; u.name=name; u.type=t; users.push_back(u);
+    };
+    int uid = 1;
+    addUser(uid++, "Alice",  UserType::Patron);
+    addUser(uid++, "Bob",    UserType::Patron);
+    addUser(uid++, "Carmen", UserType::Patron);
+    addUser(uid++, "Diego",  UserType::Patron);
+    addUser(uid++, "Eva",    UserType::Patron);
+    addUser(uid++, "Liam",   UserType::Librarian);
+    addUser(uid++, "Sara",   UserType::Admin);
 }

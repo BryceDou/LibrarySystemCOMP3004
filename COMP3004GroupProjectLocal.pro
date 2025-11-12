@@ -11,15 +11,17 @@ CONFIG += c++11
 SOURCES += \
     catalogue.cpp \
     item.cpp \
+    logindialog.cpp \
     main.cpp \
     mainwindow.cpp \
-    patron.cpp
+    user.cpp
 
 HEADERS += \
     catalogue.h \
     item.h \
+    logindialog.h \
     mainwindow.h \
-    patron.h
+    user.h
 
 FORMS += \
     mainwindow.ui

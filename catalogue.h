@@ -1,20 +1,26 @@
 #ifndef CATALOGUE_H
 #define CATALOGUE_H
 
-#include "item.h"
-#include "patron.h"
 #include <QList>
+#include <QString>
+#include "item.h"
+#include "user.h"
 
-class catalogue {
+class Catalogue {
 public:
-    QList<item>   items;
-    QList<patron> patrons;
+    QList<Item> items;
+    QList<User> users;
 
-    item*   find_item(int id);
-    patron* find_patron_by_name(const QString& name);
+    Item* findItem(int id);
+    const Item* findItem(int id) const;
 
-    // Load the default in-memory dataset (20 items + 7 users)
-    void seed_default_data();
+    User* findUserById(int id);
+    const User* findUserById(int id) const;
+
+    // Case-insensitive match on name
+    User* findUserByName(const QString& name);
+
+    void seedDefaultData(); // builds 20 items + 7 users
 };
 
 #endif // CATALOGUE_H

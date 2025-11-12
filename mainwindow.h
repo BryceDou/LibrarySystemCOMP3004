@@ -2,53 +2,58 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
-#include <memory>   // std::unique_ptr
+#include <QTableWidget>
+#include <QPushButton>
+#include <QLabel>
+#include <QGroupBox>
+#include <QAction>
 #include "catalogue.h"
-#include "patron.h"
-
-QT_BEGIN_NAMESPACE
-namespace Ui { class MainWindow; }
-QT_END_NAMESPACE
-
-class catalogue;    // forward declaration
+#include "logindialog.h"
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
-    explicit MainWindow(QWidget *parent = nullptr);
-    ~MainWindow();
+    explicit MainWindow(QWidget* parent=nullptr);
+    ~MainWindow() override = default;
 
 private slots:
-    void on_searchEdit_textChanged(const QString &text); // QLineEdit::textChanged(const QString &)
-    void on_typeFilter_currentIndexChanged(int index);   // QComboBox::currentIndexChanged(int)
-    void on_statusFilter_currentIndexChanged(int index); // QComboBox::currentIndexChanged(int)
-    void on_clearFilterBtn_clicked();                    // QPushButton::clicked()
-    void on_actionAbout_triggered();   // QAction::triggered() auto-connect
-
-    void on_tableItems_itemSelectionChanged();   // when selection changes
-    void on_borrowBtn_clicked();
-    void on_returnBtn_clicked();
-    void on_placeHoldBtn_clicked();   // optional, can be stub for now
-    void on_cancelHoldBtn_clicked();  // optional, can be stub for now
-    void on_viewAccountBtn_clicked();
+    void borrowItem();
+    void returnItem();
+    void placeHold();
+    void cancelHold();
+    void onSelectionChanged();
+    void onLogout();
 
 private:
-    Ui::MainWindow *ui;
-    std::unique_ptr<catalogue> data_;  // in-memory data model
+    void buildUi();
+    void loginFlow();  // show login, set active_
+    void setActiveUser(int uid);
+    void refreshAll();
+    void refreshItemsTable();
+    void refreshDetails();
+    void refreshAccountPanels();
+    void updateButtons();
 
-    void populateItemsTable();   // <— declare it here
+    static QString extra1Header(ItemType t);
+    static QString extra2Header(ItemType t);
+    static QString extra1Value(const Item& it);
+    static QString extra2Value(const Item& it);
 
-    void applyFilters(); // Rebuild table based on search & filters
+    // Data
+    Catalogue cat_;
+    User* active_ = nullptr;
 
-    void on_actiontrrigered();
+    // Widgets
+    QLabel* banner_ = nullptr;
+    QTableWidget* itemsTbl_ = nullptr;
+    QPushButton *btnBorrow_=nullptr, *btnReturn_=nullptr, *btnHold_=nullptr, *btnCancelHold_=nullptr;
 
-    int currentSelectedId() const;                 // -1 if nothing selected
+    // Details
+    QLabel *detTitle_=nullptr, *detCreator_=nullptr, *detType_=nullptr, *detStatus_=nullptr, *detDue_=nullptr, *detExtra1_=nullptr, *detExtra2_=nullptr;
 
-    void updateButtons();                          // enable/disable buttons
-
-    void refreshTableKeepingSelection(int keepId); // repaint and reselect
-
-    patron* activePatron_{nullptr};
+    // Account panels
+    QTableWidget* loansTbl_=nullptr;
+    QTableWidget* holdsTbl_=nullptr;
 };
 
 #endif // MAINWINDOW_H

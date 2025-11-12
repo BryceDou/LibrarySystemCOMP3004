@@ -5,29 +5,29 @@
 #include <QDate>
 #include <QList>
 
-enum class item_type { fiction, nonfiction, magazine, movie, videogame };
-enum class availability { available, checked_out };
+enum class ItemType { Fiction, NonFiction, Magazine, Movie, VideoGame };
+enum class Availability { Available, CheckedOut };
 
-class item {
-public:
-    int id{};
-    item_type type{item_type::fiction};
+struct Item {
+    int id = -1;
+    ItemType type = ItemType::Fiction;
     QString title;
-    QString creator;
-    availability status{availability::available};
-    QDate due;                      // valid only when status == checked_out
+    QString creator;          // author/director/studio/etc.
+    Availability status = Availability::Available;
+    int borrowerId = -1;      // -1 = none
+    QDate due;                // valid only when checked out
 
-    // Optional, type-specific fields
-    QString dewey;                  // for nonfiction
-    QString issue;                  // for magazine
-    QDate   pub;                    // for magazine
-    QString genre;                  // for movie/game
-    QString rating;                 // for movie/game
+    // Type-specific optional fields (used per requirements)
+    QString dewey;            // Non-fiction
+    QString issue;            // Magazine issue number
+    QDate   pub;              // Magazine publication date
+    QString genre;            // Movie / VideoGame
+    QString rating;           // Movie / VideoGame (e.g., PG-13, M)
 
-    QList<int> holdQueue;           // FIFO of patron IDs
-    // add to your item class
-    int borrowerId = -1;   // -1 = not checked out
-
+    QList<int> holdQueue;     // FIFO queue of user IDs
 };
+
+QString toString(ItemType t);
+QString toString(Availability a);
 
 #endif // ITEM_H
