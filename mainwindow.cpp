@@ -1,4 +1,6 @@
+// FILE: src/mainwindow.cpp  (updated to delegate to LibraryController)
 #include "mainwindow.h"
+#include "librarycontroller.h"   // <-- controller
 #include <QApplication>
 #include <QHeaderView>
 #include <QMessageBox>
@@ -12,6 +14,7 @@ MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
     cat_.seedDefaultData();
+    lib_ = new LibraryController(&cat_);  // controller uses in-memory data
     buildUi();
     loginFlow();
 }
@@ -119,7 +122,7 @@ void MainWindow::setActiveUser(int uid) {
     if (!active_) return;
     banner_->setText(QString("Logged in as: <b>%1</b> — <i>%2</i>")
                      .arg(active_->name, toString(active_->type)));
-    // Role-based UI
+    // Role-based: actions allowed only for patrons; fine-tuned in updateButtons()
     const bool patron = active_->type == UserType::Patron;
     btnBorrow_->setEnabled(patron);
     btnReturn_->setEnabled(patron);
@@ -270,29 +273,14 @@ void MainWindow::refreshAccountPanels() {
 void MainWindow::updateButtons() {
     const bool patron = active_ && active_->type == UserType::Patron;
     int id = selectedItemId(itemsTbl_);
-    const Item* it = (id>=0) ? cat_.findItem(id) : nullptr;
 
     bool canBorrow=false, canReturn=false, canHold=false, canCancelHold=false;
 
-    if (patron && it) {
-        const bool hasLoanCap = active_->loans.size() < 3;
-        const bool isAvailable = it->status == Availability::Available;
-        const bool isCheckedOut = it->status == Availability::CheckedOut;
-        const bool isBorrower = it->borrowerId == active_->id;
-        const bool inHoldQ = it->holdQueue.contains(active_->id);
-
-        // Borrow: available AND loan cap AND (no holds OR you're first in line)
-        bool queueClear = it->holdQueue.isEmpty() || (it->holdQueue.first() == active_->id);
-        canBorrow = isAvailable && hasLoanCap && queueClear;
-
-        // Return: only if you borrowed it
-        canReturn = isCheckedOut && isBorrower;
-
-        // Place hold: only if checked out and not already in queue
-        canHold = isCheckedOut && !inHoldQ;
-
-        // Cancel hold: only if you are in queue
-        canCancelHold = inHoldQ;
+    if (patron && id >= 0 && lib_) {
+        canBorrow     = lib_->canBorrow(active_->id, id).ok;
+        canReturn     = lib_->canReturn(active_->id, id).ok;
+        canHold       = lib_->canPlaceHold(active_->id, id).ok;
+        canCancelHold = lib_->canCancelHold(active_->id, id).ok;
     }
 
     btnBorrow_->setEnabled(canBorrow);
@@ -302,94 +290,42 @@ void MainWindow::updateButtons() {
 }
 
 void MainWindow::borrowItem() {
-    if (!active_ || active_->type != UserType::Patron) return;
+    if (!active_ || active_->type != UserType::Patron || !lib_) return;
     int id = selectedItemId(itemsTbl_);
-    Item* it = cat_.findItem(id);
-    if (!it) return;
+    if (id < 0) return;
 
-    if (active_->loans.size() >= 3) {
-        QMessageBox::warning(this,"Limit","Maximum active loans is 3.");
-        return;
-    }
-    if (it->status != Availability::Available) {
-        QMessageBox::warning(this,"Unavailable","Item is not available.");
-        return;
-    }
-    if (!it->holdQueue.isEmpty() && it->holdQueue.first() != active_->id) {
-        QMessageBox::information(this,"On Hold","Another patron is first in the hold queue.");
-        return;
-    }
-
-    it->status = Availability::CheckedOut;
-    it->borrowerId = active_->id;
-    it->due = QDate::currentDate().addDays(14);
-    active_->addLoan(it->id);
-
-    // If user was first in queue, remove that hold
-    if (!it->holdQueue.isEmpty() && it->holdQueue.first() == active_->id) {
-        it->holdQueue.pop_front();
-        active_->removeHold(it->id);
-    }
-
+    Result r = lib_->borrow(active_->id, id);
+    if (!r.ok) QMessageBox::warning(this,"Borrow", r.message);
     refreshAll();
 }
 
 void MainWindow::returnItem() {
-    if (!active_ || active_->type != UserType::Patron) return;
+    if (!active_ || active_->type != UserType::Patron || !lib_) return;
     int id = selectedItemId(itemsTbl_);
-    Item* it = cat_.findItem(id);
-    if (!it) return;
+    if (id < 0) return;
 
-    if (it->borrowerId != active_->id) {
-        QMessageBox::warning(this, "Not your loan", "You can only return items you borrowed.");
-        return;
-    }
-
-    it->status = Availability::Available;
-    it->borrowerId = -1;
-    it->due = QDate();
-    active_->removeLoan(it->id);
-
+    Result r = lib_->returnItem(active_->id, id);
+    if (!r.ok) QMessageBox::warning(this, "Return", r.message);
     refreshAll();
 }
 
 void MainWindow::placeHold() {
-    if (!active_ || active_->type != UserType::Patron) return;
+    if (!active_ || active_->type != UserType::Patron || !lib_) return;
     int id = selectedItemId(itemsTbl_);
-    Item* it = cat_.findItem(id);
-    if (!it) return;
+    if (id < 0) return;
 
-    if (it->status != Availability::CheckedOut) {
-        QMessageBox::information(this, "Hold not allowed", "Holds are only allowed on checked-out items.");
-        return;
-    }
-    if (it->holdQueue.contains(active_->id)) {
-        QMessageBox::information(this, "Already queued", "You are already in the hold queue.");
-        return;
-    }
-
-    it->holdQueue.append(active_->id);
-    active_->addHold(it->id);
-    int pos = it->holdQueue.size(); // appended at end
-    QMessageBox::information(this, "Hold placed", QString("You are #%1 in the queue.").arg(pos));
-
+    Result r = lib_->placeHold(active_->id, id);
+    QMessageBox::information(this, "Hold", r.message);
     refreshAll();
 }
 
 void MainWindow::cancelHold() {
-    if (!active_ || active_->type != UserType::Patron) return;
+    if (!active_ || active_->type != UserType::Patron || !lib_) return;
     int id = selectedItemId(itemsTbl_);
-    Item* it = cat_.findItem(id);
-    if (!it) return;
+    if (id < 0) return;
 
-    int idx = it->holdQueue.indexOf(active_->id);
-    if (idx < 0) {
-        QMessageBox::information(this, "No hold", "You do not have a hold on this item.");
-        return;
-    }
-
-    it->holdQueue.removeAt(idx);
-    active_->removeHold(it->id);
+    Result r = lib_->cancelHold(active_->id, id);
+    if (!r.ok) QMessageBox::warning(this, "Cancel hold", r.message);
     refreshAll();
 }
 
@@ -399,13 +335,10 @@ void MainWindow::onSelectionChanged() {
 }
 
 void MainWindow::onLogout() {
-    // Clear session-specific UI state
     active_ = nullptr;
     banner_->setText("Not signed in");
     loansTbl_->setRowCount(0);
     holdsTbl_->setRowCount(0);
     updateButtons();
-    // Show login
     loginFlow();
 }
-

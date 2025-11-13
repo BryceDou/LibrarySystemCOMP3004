@@ -11,6 +11,7 @@ CONFIG += c++11
 SOURCES += \
     catalogue.cpp \
     item.cpp \
+    librarycontroller.cpp \
     logindialog.cpp \
     main.cpp \
     mainwindow.cpp \
@@ -19,6 +20,7 @@ SOURCES += \
 HEADERS += \
     catalogue.h \
     item.h \
+    librarycontroller.h \
     logindialog.h \
     mainwindow.h \
     user.h
