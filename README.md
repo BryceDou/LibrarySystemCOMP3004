@@ -6,8 +6,8 @@ Date: 2025-11-13
 
 Team Members
 
-Xiaoqian Dou - 101192697
-Jamal Ismail - 101240336
+Xiaoqian Dou - 101192697,
+Jamal Ismail - 101240336,
 Henry Farnsworth - 101299604
 
 
@@ -15,8 +15,8 @@ Henry Farnsworth - 101299604
 ### 1. Extract the Project
 run the following in terminal
 
-unzip COMP3004GroupProject.zip
-cd COMP3004GroupProject
+unzip Team89_D1.zip
+cd COMP3004GroupProject-main
 
 
 ### 2. Open in Qt Creator
