@@ -6,8 +6,8 @@ Date: 2025-11-13
 
 Team Members
 
-Xiaoqian Dou - Student Number
-Jamal Ismail - Student Number
+Xiaoqian Dou - 101192697
+Jamal Ismail - 101240336
 Henry Farnsworth - 101299604
 
 
