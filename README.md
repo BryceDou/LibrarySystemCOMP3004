@@ -1,7 +1,11 @@
 HinLIBS Deliverable 1 - README
+
 Team #: 89
+
 Course: COMP 3004 Fall 2025
-Project: Hintonville Library Information and Borrowing System (HinLIBS)
+
+Project: Hintonville Library Information and Borrowing System(HinLIBS)
+
 Date: 2025-11-13
 
 Team Members
