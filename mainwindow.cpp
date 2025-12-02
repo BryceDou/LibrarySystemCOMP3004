@@ -7,17 +7,32 @@
 #include <QDate>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QDebug>        // ✅ must be included
+#include <QSqlError>     // ✅ needed for m_db.lastError().text()
 #include <QSplitter>
 #include <QToolBar>
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
+    // Open DB file (creates hinlibs.db in working directory)
+    if (!DatabaseManager::instance().openDatabase("hinlibs.db")) {
+        qDebug() << "Failed to open database!";
+        qApp->quit();
+        return;
+    }
+
+    // Create tables if they don't exist
+    DatabaseManager::instance().createTables();
+
+    // Seed default data into DB
     cat_.seedDefaultData();
-    lib_ = new LibraryController(&cat_);  // controller uses in-memory data
+
+    lib_ = new LibraryController(&cat_);   // Controller wraps DB
     buildUi();
     loginFlow();
 }
+
 
 void MainWindow::buildUi() {
     setWindowTitle("HinLIBS");
@@ -112,17 +127,18 @@ void MainWindow::loginFlow() {
             return;
         }
         setActiveUser(dlg.selectedUserId());
-        if (active_) break;
+        if (active_ && active_->id != 0) break;
     }
     refreshAll();
 }
 
 void MainWindow::setActiveUser(int uid) {
-    active_ = cat_.findUserById(uid);
-    if (!active_) return;
+    User u = cat_.getUserById(uid);  // DB-backed getter
+    if (u.id == 0) return;
+    active_ = new User(u);           // store pointer to simplify rest of code
     banner_->setText(QString("Logged in as: <b>%1</b> — <i>%2</i>")
                      .arg(active_->name, toString(active_->type)));
-    // Role-based: actions allowed only for patrons; fine-tuned in updateButtons()
+
     const bool patron = active_->type == UserType::Patron;
     btnBorrow_->setEnabled(patron);
     btnReturn_->setEnabled(patron);
@@ -186,7 +202,7 @@ void MainWindow::refreshItemsTable() {
     itemsTbl_->setHorizontalHeaderLabels({"ID","Title","Creator","Type","Status","Due","Extra 1","Extra 2"});
 
     int row=0;
-    for (const auto& it : cat_.items) {
+    for (const auto& it : cat_.getAllItems()) {   // DB-backed iteration
         itemsTbl_->insertRow(row);
         auto put = [&](int col, const QString& s){
             auto* item = new QTableWidgetItem(s);
@@ -209,7 +225,7 @@ void MainWindow::refreshItemsTable() {
 
 void MainWindow::refreshDetails() {
     int id = selectedItemId(itemsTbl_);
-    const Item* it = (id>=0) ? cat_.findItem(id) : nullptr;
+    const Item* it = (id>=0) ? lib_->findItem(id) : nullptr;   // use LibraryController
     if (!it) {
         detTitle_->setText("Title: -");
         detCreator_->setText("Creator: -");
@@ -237,7 +253,7 @@ void MainWindow::refreshAccountPanels() {
     // Loans
     int r=0;
     for (int itemId : active_->loans) {
-        const Item* it = cat_.findItem(itemId);
+        const Item* it = lib_->findItem(itemId);  // DB-backed
         if (!it) continue;
         loansTbl_->insertRow(r);
         auto put=[&](int c, const QString&s){
@@ -255,7 +271,7 @@ void MainWindow::refreshAccountPanels() {
     // Holds
     r=0;
     for (int itemId : active_->holds) {
-        const Item* it = cat_.findItem(itemId);
+        const Item* it = lib_->findItem(itemId);  // DB-backed
         if (!it) continue;
         int pos = it->holdQueue.indexOf(active_->id);
         holdsTbl_->insertRow(r);
@@ -342,3 +358,5 @@ void MainWindow::onLogout() {
     updateButtons();
     loginFlow();
 }
+
+

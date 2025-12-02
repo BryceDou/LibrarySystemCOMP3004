@@ -30,11 +30,11 @@ LoginDialog::LoginDialog(Catalogue* cat, QWidget* parent)
 }
 
 void LoginDialog::onAccept() {
-    auto* u = cat_->findUserByName(nameEdit_->text());
-    if (!u) {
-        msg_->setText("User not found. Try one of the seeded names.");
-        return;
-    }
-    selectedId_ = u->id;
+    User u = cat_->getUserByName(nameEdit_->text());
+if (u.id == 0) {  // ID=0 means user not found in your DB-backed design
+    msg_->setText("User not found. Try one of the seeded names.");
+    return;
+}
+selectedId_ = u.id;
     accept();
 }

@@ -2,13 +2,11 @@
 #define LIBRARYCONTROLLER_H
 
 #include <QString>
+#include "item.h"
+#include "user.h"
 
-// Forward-declare your entities to keep header light.
 class Catalogue;
-struct Item;    // from item.h (struct with public fields)
-class User;     // from user.h
 
-// Tiny UI-friendly result.
 struct Result {
     bool ok;
     QString message;
@@ -28,14 +26,14 @@ public:
     int    queuePosition(int userId, int itemId) const;
 
     // --- Commands (mutate state) ---
-    Result borrow(int userId, int itemId);      // due = today + 14
+    Result borrow(int userId, int itemId);      
     Result returnItem(int userId, int itemId);
-    Result placeHold(int userId, int itemId);   // aux = queue pos
+    Result placeHold(int userId, int itemId);   
     Result cancelHold(int userId, int itemId);
+    const Item* findItem(int id) const;   
+    User findUser(int id) const; 
 
-private:
-    Item* findItem(int id) const;
-    User* findUser(int id) const;
+private:  
 
     static const int kMaxLoans = 3;
     Catalogue* cat_;

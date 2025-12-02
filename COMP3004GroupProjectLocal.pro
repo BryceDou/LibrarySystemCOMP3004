@@ -1,4 +1,4 @@
-QT       += core gui
+QT       += core gui sql
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
@@ -10,6 +10,7 @@ CONFIG += c++11
 
 SOURCES += \
     catalogue.cpp \
+    databasemanager.cpp \
     item.cpp \
     librarycontroller.cpp \
     logindialog.cpp \
@@ -19,6 +20,7 @@ SOURCES += \
 
 HEADERS += \
     catalogue.h \
+    databasemanager.h \
     item.h \
     librarycontroller.h \
     logindialog.h \

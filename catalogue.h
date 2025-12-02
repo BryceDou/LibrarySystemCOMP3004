@@ -1,24 +1,24 @@
 #ifndef CATALOGUE_H
 #define CATALOGUE_H
 
-#include <QList>
 #include <QString>
 #include "item.h"
 #include "user.h"
+#include "databasemanager.h" // Include DatabaseManager
 
 class Catalogue {
 public:
-    QList<Item> items;
-    QList<User> users;
+    // QList<Item> items; // Removed
+    // QList<User> users; // Removed
 
-    Item* findItem(int id);
-    const Item* findItem(int id) const;
-
-    User* findUserById(int id);
-    const User* findUserById(int id) const;
+    Item getItem(int id); // Changed from findItem to getItem
+    User getUserById(int id); // Changed from findUserById to getUserById
 
     // Case-insensitive match on name
-    User* findUserByName(const QString& name);
+    User getUserByName(const QString& name); // Changed from findUserByName to getUserByName
+
+    QList<Item> getAllItems();
+    QList<User> getAllUsers();
 
     void seedDefaultData(); // builds 20 items + 7 users
 };
