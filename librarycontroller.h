@@ -30,7 +30,7 @@ public:
     Result returnItem(int userId, int itemId);
     Result placeHold(int userId, int itemId);   
     Result cancelHold(int userId, int itemId);
-    const Item* findItem(int id) const;   
+    Item findItem(int id) const;   
     User findUser(int id) const; 
 
 private:  

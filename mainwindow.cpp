@@ -135,6 +135,7 @@ void MainWindow::loginFlow() {
 void MainWindow::setActiveUser(int uid) {
     User u = cat_.getUserById(uid);  // DB-backed getter
     if (u.id == 0) return;
+    delete active_;
     active_ = new User(u);           // store pointer to simplify rest of code
     banner_->setText(QString("Logged in as: <b>%1</b> — <i>%2</i>")
                      .arg(active_->name, toString(active_->type)));
@@ -225,8 +226,8 @@ void MainWindow::refreshItemsTable() {
 
 void MainWindow::refreshDetails() {
     int id = selectedItemId(itemsTbl_);
-    const Item* it = (id>=0) ? lib_->findItem(id) : nullptr;   // use LibraryController
-    if (!it) {
+    Item it = (id>=0) ? lib_->findItem(id) : Item();   // use LibraryController
+    if (it.id == 0) {
         detTitle_->setText("Title: -");
         detCreator_->setText("Creator: -");
         detType_->setText("Type: -");
@@ -236,13 +237,13 @@ void MainWindow::refreshDetails() {
         detExtra2_->setText("Extra 2: -");
         return;
     }
-    detTitle_->setText("Title: " + it->title);
-    detCreator_->setText("Creator: " + it->creator);
-    detType_->setText("Type: " + toString(it->type));
-    detStatus_->setText("Status: " + toString(it->status));
-    detDue_->setText("Due: " + (it->due.isValid()? it->due.toString("yyyy-MM-dd") : "-"));
-    detExtra1_->setText(extra1Header(it->type) + ": " + extra1Value(*it));
-    detExtra2_->setText(extra2Header(it->type) + ": " + extra2Value(*it));
+    detTitle_->setText("Title: " + it.title);
+    detCreator_->setText("Creator: " + it.creator);
+    detType_->setText("Type: " + toString(it.type));
+    detStatus_->setText("Status: " + toString(it.status));
+    detDue_->setText("Due: " + (it.due.isValid()? it.due.toString("yyyy-MM-dd") : "-"));
+    detExtra1_->setText(extra1Header(it.type) + ": " + extra1Value(it));
+    detExtra2_->setText(extra2Header(it.type) + ": " + extra2Value(it));
 }
 
 void MainWindow::refreshAccountPanels() {
@@ -253,17 +254,17 @@ void MainWindow::refreshAccountPanels() {
     // Loans
     int r=0;
     for (int itemId : active_->loans) {
-        const Item* it = lib_->findItem(itemId);  // DB-backed
-        if (!it) continue;
+        Item it = lib_->findItem(itemId);  // DB-backed
+        if (it.id == 0) continue;
         loansTbl_->insertRow(r);
         auto put=[&](int c, const QString&s){
             auto* cell=new QTableWidgetItem(s);
             cell->setFlags(cell->flags() ^ Qt::ItemIsEditable);
             loansTbl_->setItem(r,c,cell);
         };
-        put(0, it->title);
-        put(1, it->due.isValid()? it->due.toString("yyyy-MM-dd") : "");
-        int daysLeft = QDate::currentDate().daysTo(it->due);
+        put(0, it.title);
+        put(1, it.due.isValid()? it.due.toString("yyyy-MM-dd") : "");
+        int daysLeft = QDate::currentDate().daysTo(it.due);
         put(2, QString::number(daysLeft));
         r++;
     }
@@ -271,16 +272,16 @@ void MainWindow::refreshAccountPanels() {
     // Holds
     r=0;
     for (int itemId : active_->holds) {
-        const Item* it = lib_->findItem(itemId);  // DB-backed
-        if (!it) continue;
-        int pos = it->holdQueue.indexOf(active_->id);
+        Item it = lib_->findItem(itemId);  // DB-backed
+        if (it.id == 0) continue;
+        int pos = it.holdQueue.indexOf(active_->id);
         holdsTbl_->insertRow(r);
         auto put=[&](int c, const QString&s){
             auto* cell=new QTableWidgetItem(s);
             cell->setFlags(cell->flags() ^ Qt::ItemIsEditable);
             holdsTbl_->setItem(r,c,cell);
         };
-        put(0, it->title);
+        put(0, it.title);
         put(1, (pos>=0? QString::number(pos+1) : "-"));
         r++;
     }
@@ -351,6 +352,7 @@ void MainWindow::onSelectionChanged() {
 }
 
 void MainWindow::onLogout() {
+    delete active_;
     active_ = nullptr;
     banner_->setText("Not signed in");
     loansTbl_->setRowCount(0);
