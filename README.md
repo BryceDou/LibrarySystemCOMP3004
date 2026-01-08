@@ -8,12 +8,6 @@ Project: Hintonville Library Information and Borrowing System(HinLIBS)
 
 Date: 2025-11-13
 
-Team Members
-
-Xiaoqian Dou - 101192697,
-Jamal Ismail - 101240336,
-Henry Farnsworth - 101299604
-
 
 ## Installation, Build, Launch Instructions
 ### 1. Extract the Project
